@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Notes Dashboard</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                background: #f4f4f9;
+            }
+            .container {
+                max-width: 800px;
+                margin: 50px auto;
+                padding: 20px;
+                background: #fff;
+                border-radius: 8px;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            }
+            h2 {
+                text-align: center;
+                color: #333;
+            }
+            .note {
+                padding: 10px;
+                margin: 10px 0;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background: #fafafa;
+            }
+            .note-actions button {
+                margin-right: 5px;
+                padding: 5px 10px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            button.submit {
+                width: 100%;
+                padding: 10px;
+                background: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            .login-page,
+            .dashboard {
+                display: none;
+            }
+            .active {
+                display: block;
+            }
+        </style>
+    </head>
+    <body>
+        <!-- Navbar -->
+        <nav class="navbar navbar-expand-lg navbar-light bg-light">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#">Notes Dashboard</a>
+                <button class="btn btn-outline-danger" id="logout-button">
+                    Logout
+                </button>
+            </div>
+        </nav>
+        <!-- Login Page -->
+        <div class="container login-page active" id="login-page">
+            <h2>Login</h2>
+            <form id="login-form">
+                <input
+                    type="email"
+                    id="email"
+                    placeholder="Email"
+                    required
+                /><br />
+                <input
+                    type="password"
+                    id="password"
+                    placeholder="Password"
+                    required
+                /><br />
+                <button type="submit" class="submit">Login</button>
+            </form>
+        </div>
+
+        <div class="container dashboard" id="dashboard">
+            <h2>Notes Dashboard</h2>
+            <div id="notes"></div>
+            <form id="note-form">
+                <input
+                    type="text"
+                    id="note-title"
+                    placeholder="Title"
+                    required
+                /><br />
+                <textarea
+                    id="note-content"
+                    placeholder="Content"
+                    rows="3"
+                    required
+                ></textarea
+                ><br />
+                <button type="submit" class="submit">Add Note</button>
+            </form>
+        </div>
+
+        <script>
+            const API_BASE_URL =
+                "https://a09f3ab4-8335-4729-9152-6fdd0cc4e3ae-00-1w8l3xrmrh5qz.janeway.replit.dev";
+            let token = localStorage.getItem("jwt");
+
+            const loginPage = document.getElementById("login-page");
+            const dashboard = document.getElementById("dashboard");
+            const notesDiv = document.getElementById("notes");
+            const loginForm = document.getElementById("login-form");
+            const noteForm = document.getElementById("note-form");
+
+            const toggleView = () => {
+                console.log("Token in toggleView:", token); //debug log
+                loginPage.classList.toggle("active", !token);
+                dashboard.classList.toggle("active", !!token);
+                if (token) fetchNotes();
+            };
+
+            loginForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                console.log("Login form submitted"); //debug log
+                const res = await fetch(`${API_BASE_URL}/auth/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        email: document.getElementById("email").value,
+                        password: document.getElementById("password").value,
+                    }),
+                });
+                console.log("Response received", res); //Debug log
+                const data = await res.json();
+                console.log("Response Data", data); //Debug log
+                if (res.ok) {
+                    token = data.token;
+                    console.log("Token saved:", token); //Debug log
+                    localStorage.setItem("jwt", token);
+                    toggleView();
+                } else console.log("Login failed:", data.message); //Debug log
+                alert(data.message);
+            });
+
+            const fetchNotes = async () => {
+                console.log("Fetching notes with token:", token); //Debug log
+                const res = await fetch(`${API_BASE_URL}/api/notes`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                console.log("Notes fetch response:", res); //Debug log
+                const data = await res.json();
+                console.log("Notes data:", data); //Debug log
+                notesDiv.innerHTML = res.ok
+                    ? data
+                          .map(
+                              (n) => `
+            <div class="note">
+                <h3>${n.title}</h3><p>${n.content}</p>
+                <button onclick="editNote('${n._id}', '${n.title}', '${n.content}')">Edit</button>
+                <button onclick="deleteNote('${n._id}')">Delete</button>
+            </div>`,
+                          )
+                          .join("")
+                    : alert(data.message);
+            };
+
+            noteForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                const url = editingNoteId
+                    ? `${API_BASE_URL}/api/notes/${editingNoteId}`
+                    : `${API_BASE_URL}/api/notes`;
+                const res = await fetch(url, {
+                    method: editingNoteId ? "PUT" : "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        title: document.getElementById("note-title").value,
+                        content: document.getElementById("note-content").value,
+                    }),
+                });
+                if (res.ok) fetchNotes();
+                else alert("Failed to save note");
+                noteForm.reset();
+            });
+
+            const editNote = (id, title, content) => {
+                document.getElementById("note-title").value = title;
+                document.getElementById("note-content").value = content;
+                editingNoteId = id;
+            };
+
+            const deleteNote = async (id) => {
+                const res = await fetch(`${API_BASE_URL}/api/notes/${id}`, {
+                    method: "DELETE",
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) fetchNotes();
+                else alert("Failed to delete note");
+            };
+
+            let editingNoteId = null;
+            toggleView();
+
+            //Logout Functionality
+            document
+                .getElementById("logout-button")
+                .addEventListener("click", () => {
+                    localStorage.removeItem("jwt"); // Clear JWT token
+                    window.location.reload(); // Redirect to login page
+                });
+        </script>
+    </body>
+</html>
